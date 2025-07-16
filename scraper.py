@@ -41,31 +41,31 @@ def log_last_run_time():
 
 # converts the string time given by Pipistrel UI to a datetime object
 def convert_str_to_datetime(str_datetime: str):
+    if "midnight" in str_datetime:
+        str_datetime = str_datetime.replace("midnight", "12:00 AM")  # ✅ handle midnight
 
-  if re.search(":", str_datetime):
+    if re.search(":", str_datetime):
+        if str_datetime[-4:] == "a.m.":
+            str_datetime = str_datetime[:-4] + "AM"
+        elif str_datetime[-4:] == "p.m.":
+            str_datetime = str_datetime[:-4] + "PM"
+    else:
+        if str_datetime[-4:] == "a.m.":
+            str_datetime = str_datetime[:-5] + ":00 AM"
+        elif str_datetime[-4:] == "p.m.":
+            str_datetime = str_datetime[:-5] + ":00 PM"
 
-    # convert a.m. and p.m. to readable format
-    if str_datetime[-4:] == "a.m.":
-      str_datetime = str_datetime[:-4] + "AM"
-    elif str_datetime[-4:] == "p.m.":
-      str_datetime = str_datetime[:-4] + "PM"
-  else:
-    if str_datetime[-4:] == "a.m.":
-      str_datetime = str_datetime[:-5] + ":00 AM"
-    elif str_datetime[-4:] == "p.m.":
-      str_datetime = str_datetime[:-5] + ":00 PM"
-  
-  if "noon" in str_datetime:
-    str_datetime = str_datetime.replace("noon", "12:00 PM")
+    if "noon" in str_datetime:
+        str_datetime = str_datetime.replace("noon", "12:00 PM")
 
-  if "." in str_datetime:
-    if "Sept" in str_datetime:
-      str_datetime = str_datetime.replace("Sept", "Sep")
-    format = "%b. %d, %Y, %I:%M %p"
-  else:
-    format = "%B %d, %Y, %I:%M %p"
+    if "." in str_datetime:
+        if "Sept" in str_datetime:
+            str_datetime = str_datetime.replace("Sept", "Sep")
+        format = "%b. %d, %Y, %I:%M %p"
+    else:
+        format = "%B %d, %Y, %I:%M %p"
 
-  return datetime.strptime(str_datetime, format)
+    return datetime.strptime(str_datetime, format)
 
 # returns the relevant weather data for the given scraped flights
 def weather_data(date_list, ids_list, driver, download_dir):
@@ -152,6 +152,11 @@ def environment_setup():
   cur = conn.cursor()
   return {'driver': driver, 'cursor': cur, 'download_dir': download_dir}
 
+def pipistrel_go_home(driver):
+   # Assumes are currently logged in, goes back to home page
+   pipistrel_ui = os.getenv("PIPISTREL_UI")
+   driver.get(pipistrel_ui)
+
 def pipistrel_login(driver):
   # get login credentials for Pipistrel UI
   username = os.getenv("user")
@@ -174,9 +179,16 @@ def pipistrel_login(driver):
     # click sign in
     driver.find_element(By.XPATH, "/html/body/div[1]/div[2]/div/form/button").click()
 
-def get_plane_info(driver):
-  # click on the aircraft to get details for the plane we are flying
-  driver.find_element(By.CLASS_NAME, "clickable-aircraft").click()
+def get_plane_info(driver, index = 0):
+  # get the total elements with the "clickable-aircraft" class
+  aircraft_elements = driver.find_elements(By.CLASS_NAME, "clickable-aircraft")
+  # go to index's element
+  aircraft_elements[index].click()
+
+# get number of planes
+def get_number_of_planes(driver):
+   aircraft_elements = driver.find_elements(By.CLASS_NAME, "clickable-aircraft")
+   return len(aircraft_elements) - 20
 
 # create tables if they don't exist
 def create_tables():
@@ -214,6 +226,11 @@ def flight_activity_tables_views():
     execute(query)
 
 def scrape(driver, cur, download_dir):
+  # Get the plane registration info
+  registration_label = driver.find_element(By.XPATH, "//td[text()='Registration']")
+  registration_value = registration_label.find_element(By.XPATH, "following-sibling::td")
+  plane = registration_value.text
+
   # then get each data row for the given plane
   rows = driver.find_elements(By.CLASS_NAME, "clickable-aircraft")
 
@@ -239,6 +256,12 @@ def scrape(driver, cur, download_dir):
       current_flight_id = row_data[0]
       current_flight_str_datetime = row_data[1]
       current_flight_datetime = convert_str_to_datetime(current_flight_str_datetime)
+      
+      # Used to limit the dates, in acutal code, remove this
+      #flight_date = current_flight_datetime.date()
+      #if flight_date < date(2025,6,1) or flight_date > date(2025,6,13):
+      #  continue
+      
       current_flight_type = row_data[2]
       current_flight_notes = row_data[4]
 
@@ -265,7 +288,7 @@ def scrape(driver, cur, download_dir):
         if str(current_flight_id) not in str(current_download_link):
           driver.back()
           continue
-        push_flight_metadata(current_flight_id, current_flight_datetime, current_flight_notes, current_flight_type)
+        push_flight_metadata(current_flight_id, current_flight_datetime, current_flight_notes, current_flight_type, plane)
         ids_list.append(current_flight_id)
         date_list.append(current_flight_datetime)   
         current_file_name = os.path.basename(current_download_link)
@@ -323,7 +346,15 @@ if __name__ == '__main__':
   log_last_run_time()
   env = environment_setup()
   pipistrel_login(env['driver'])
-  get_plane_info(env['driver'])
+  get_plane_info(env['driver']) # Default first plane stuff
   create_tables()
   create_views()
   scrape(env['driver'], env['cursor'], env['download_dir'])
+     
+  # If there are more than 1 plane, then we will loop until all planes have been iterated through
+  pipistrel_go_home(env['driver'])
+  numPlanes = get_number_of_planes(env['driver'])
+  
+  for i in range(numPlanes - 1):
+     get_plane_info(env['driver'], 1 + i)
+     scrape(env['driver'], env['cursor'], env['download_dir'])
