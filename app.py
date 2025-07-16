@@ -132,7 +132,7 @@ def delete_style(val):
 
   
 # Function -------------------------------------------------------------------------------------------------------------------------------------------------------
-def get_flights(flight_type="Flight test", columns=["id", "flight_date", "flight_time_utc"], table="flights"):
+def get_flights(flight_type="Flight test", columns=["id", "flight_date", "flight_time_utc", "plane"], table="flights", plane_type = "C-GAUW"):
     """
     The function uses the query_flights class to get all the flights ids and dates in a dictionary of key: value --> flight_date: flight_id. 
 
@@ -144,12 +144,12 @@ def get_flights(flight_type="Flight test", columns=["id", "flight_date", "flight
     """
     flights = query_flights()
 
-    flight_data = flights.get_flight_id_and_dates(flight_type, columns, table)
+    flight_data = flights.get_flight_id_and_dates(flight_type, columns, table, plane_type)
     
     return flight_data
 
 # Function -------------------------------------------------------------------------------------------------------------------------------------------------------
-def get_charging_data(columns=["id", "flight_date", "flight_time_utc"], table="flights"):
+def get_charging_data(columns=["id", "flight_date", "flight_time_utc", "plane"], table="flights", plane_type = "C-GAUW"):
     """
     The function uses the query_flights class to get all the flights ids and dates in a dictionary of key: value --> flight_date: flight_id. 
 
@@ -161,7 +161,7 @@ def get_charging_data(columns=["id", "flight_date", "flight_time_utc"], table="f
     """
     charging_sessions = query_flights()
 
-    charging_data = charging_sessions.get_flight_id_and_dates("Charging", columns, table)
+    charging_data = charging_sessions.get_flight_id_and_dates("Charging", columns, table, plane_type=plane_type)
     
     return charging_data
 
@@ -399,11 +399,12 @@ app_ui = ui.page_fluid(
                 ui.accordion_panel(
                     "Filters",
                     ui.layout_columns(
-                        ui.input_selectize("data_granularity", "Select Data Granularity", choices=["Granular", "Aggregate"], selected="Granular"),
-                        ui.input_selectize("data_type_selection", "Select Data Type", choices=["Flight test", "Charging", "Ground test"], multiple=False, selected="Flight test"),
-                        ui.output_ui("data_type_dates"),
-                        ui.input_selectize("total_data_show", "Select Data Preview Limit", choices=[10, 20, 30], multiple=False, selected=10),
-                        col_widths=[3, 3, 3, 3]
+                         ui.input_selectize("data_granularity", "Select Data Granularity", choices=["Granular", "Aggregate"], selected="Granular"),
+                         ui.input_selectize("data_type_selection", "Select Data Type", choices=["Flight test", "Charging", "Ground test"], multiple=False, selected="Flight test"),
+                         ui.input_selectize("plane_type_filter", "Select Plane Type", choices=["C-GAUW", "C-GMUW"]),
+                         ui.output_ui("data_type_dates"),
+                         ui.input_selectize("total_data_show", "Select Data Preview Limit", choices=[10, 20, 30], multiple=False, selected=10),
+                         col_widths=[2, 2, 2, 3, 3]
                     ),
                     ui.output_ui("flight_preview_columns_choice"),
                     ui.p("          "),
@@ -449,7 +450,11 @@ app_ui = ui.page_fluid(
                 div(HTML("<hr>")),
                 div(HTML("<h4> Flight Graphs </h4>")),
                 ui.layout_columns(
-                    ui.input_selectize("singular_flight_date", "Choose Flight Date:", get_flights()),
+                     ui.input_selectize("flight_type_vis", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
+                     col_widths=(3)
+                ),
+                ui.layout_columns(
+                    ui.input_selectize("singular_flight_date", "Choose Flight Date:", {}),
                     col_widths=(3)
                 ),
                 ui.p("          "),
@@ -542,14 +547,18 @@ app_ui = ui.page_fluid(
                 div(HTML("<hr>")),
                 ui.layout_columns(
                     ui.card(
-                        ui.tooltip(
-                            ui.input_selectize("select_flights", "Flight Date:", get_flights()), 
-                            "Select the date for which you want to view the data."
-                        ),
-                        ui.tooltip(
-                            ui.input_selectize("select_graph", "Graph Type:", ["Line Plot", "Scatter Plot"]), 
-                            "Select the type of graph you want to see."
-                        )
+                         ui.tooltip(
+                              ui.input_selectize("flight_type_custom", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
+                              "Select the flight type."
+                         ),
+                         ui.tooltip(
+                              ui.input_selectize("select_flights", "Flight Date:", {}),
+                              "Select the date for which you want to view the data."
+                         ),
+                         ui.tooltip(
+                              ui.input_selectize("select_graph", "Graph Type:", ["Line Plot", "Scatter Plot"]),
+                              "Select the type of graph you want to see."
+                         )
                     ),
                     ui.card(
                         ui.tooltip(
@@ -589,7 +598,8 @@ app_ui = ui.page_fluid(
                     ui.p("Discover valuable insights into the heart of the e-plane — the battery. Explore how different aircraft maneuvers affect the battery’s state of charge through detailed statistical visualizations. Additionally, monitor the battery's health over time, enabling you to derive actionable insights and enhance your decision-making processes."), min_height="130px"
                 ), 
                 div(HTML("<hr>")),
-                ui.input_selectize("statistical_time", "Choose Flight Date:", get_flights()),
+                ui.input_selectize("flight_type_stat", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
+                ui.input_selectize("statistical_time", "Choose Flight Date:", {}),
                 ui.p("          "),
                 ui.row(
                     ui.column(5,
@@ -627,7 +637,8 @@ app_ui = ui.page_fluid(
                 div(HTML("<hr>")),
                 div(HTML("<h2> SOH Insights </h2>")),
                 div(HTML("<hr>")),
-                ui.input_selectize("statistical_multi_time", "Choose Flight Date(s):", get_flights(), width="600px", multiple=True),
+                ui.input_selectize("flight_type_statistical_multi", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
+                ui.input_selectize("statistical_multi_time", "Choose Flight Date(s):", {}, multiple=True, width="600px"),
                 ui.p("          "),
                 ui.row(
                     ui.column(6,
@@ -676,10 +687,14 @@ app_ui = ui.page_fluid(
                 div(HTML("<hr>")),
                 ui.layout_columns(
                     ui.card(
-                        ui.tooltip(
-                            ui.input_selectize("select_charging", "Charging Date and Time:", get_charging_data(), multiple=True), 
-                            "Select the date for which you want to view the data."
-                        ),
+                         ui.tooltip(
+                              ui.input_selectize("plane_type_charging", "Choose Flight Type:", ["C-GAUW", "C-GMUW"]),
+                              "Select the plane type to filter available charging sessions."
+                         ),
+                         ui.tooltip(
+                              ui.input_selectize("select_charging", "Charging Date and Time:", choices=[], multiple=True, options={"create": True}),
+                              "Select the date for which you want to view the data."
+                         ),
                         ui.tooltip(
                             ui.input_selectize("select_charging_graph", "Graph Type:", ["Line Plot", "Scatter Plot"]), 
                             "Select the type of graph you want to see."
@@ -1442,10 +1457,29 @@ def server(input: Inputs, output: Outputs, session: Session):
     # Function -------------------------------------------------------------------------------------------------------------------------------------------
     @output
     @render.ui
-    @reactive.event(input.data_type_selection)
+    @reactive.event(input.data_type_selection, input.plane_type_filter)
     def data_type_dates():
-        data_type = input.data_type_selection()
-        return ui.input_selectize("data_preview_date", "Select the Date:", get_flights(flight_type=data_type))
+          data_type = input.data_type_selection()
+          plane_type = input.plane_type_filter()
+
+          if plane_type:
+               flights = get_flights(flight_type=data_type, plane_type=plane_type)
+          else:
+               flights = get_flights(flight_type=data_type)
+
+          # ✅ Add this to handle no results
+          if not flights:
+               return ui.input_selectize(
+                    "data_preview_date",
+                    "No Flights Available",
+                    choices=[]
+               )
+
+          return ui.input_selectize(
+               "data_preview_date",
+               "Select the Date:",
+               choices=flights
+          )
         
     
     # Function -------------------------------------------------------------------------------------------------------------------------------------------
@@ -1751,6 +1785,65 @@ def server(input: Inputs, output: Outputs, session: Session):
 
             # Set the data show to 1
             table_data_show.set(reactive_var)
+    
+    # Function -------------------------------------------------------------------------------------------------------------------------------------------
+    @reactive.Effect
+    def update_single_flight_dropdown():
+     if input.flight_type_vis():
+          flight_dict = get_flights(plane_type = input.flight_type_vis())
+          ui.update_selectize("singular_flight_date", choices=flight_dict)
+
+    # Function -------------------------------------------------------------------------------------------------------------------------------------------
+    @reactive.Effect
+    def update_custom_graph_flight_dropdown():
+     if input.flight_type_custom():
+          flight_dict = get_flights(plane_type=input.flight_type_custom())
+          ui.update_selectize("select_flights", choices=flight_dict)
+    
+    # Function -------------------------------------------------------------------------------------------------------------------------------------------
+    @reactive.Effect
+    def update_statistical_flight_dropdown():
+     if input.flight_type_stat():
+          flight_dict = get_flights(plane_type=input.flight_type_stat())
+          ui.update_selectize("statistical_time", choices=flight_dict)
+
+    # Function -------------------------------------------------------------------------------------------------------------------------------------------
+     @reactive.Effect
+     def update_charging_dates():
+          plane = input.plane_type_charging()
+          charging_data = get_charging_data(plane_type=plane)  # dict: id → label
+          previous_selection = input.select_charging() or []
+
+          # Add selected IDs back if not in filtered results
+          for flight_id in previous_selection:
+               if flight_id not in charging_data:
+                    # You can use fallback label, or re-query the DB here if you want more detail
+                    charging_data[flight_id] = f"{flight_id} (previous selection)"
+
+          ui.update_selectize(
+               "select_charging",
+               choices=charging_data,
+               selected=previous_selection
+          )
+    
+    # Function -------------------------------------------------------------------------------------------------------------------------------------------
+    @reactive.Effect
+    def update_statistical_multi_time():
+          plane = input.flight_type_statistical_multi()
+          flights = get_flights(plane_type=plane)  # returns dict {id: label}
+          previous_selection = input.statistical_multi_time() or []
+
+          # Preserve previously selected IDs
+          for fid in previous_selection:
+               if fid not in flights:
+                    flights[fid] = f"{fid} (previous selection)"
+
+          ui.update_selectize(
+               "statistical_multi_time",
+               choices=flights,
+               selected=previous_selection
+          )
+
 
     # #-------------------------------------------------------------------------------------------------------------------------------------------------------------
     # # END: SIMULATION SCREEN 
