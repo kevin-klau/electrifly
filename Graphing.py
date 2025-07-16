@@ -8,7 +8,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.io as pio
 import matplotlib.pyplot as plt
-
+import pickle 
+from Aniket_Stages.feature_eng import add_features, add_altitude, add_smoothed_RoC, add_RoC, add_smoothed_alt, add_rolling_mean
 
 # Function -------------------------------------------------------------------------------------------------------------------------------------------------------
 def create_mapbox_map_per_flight(flight_id: int):
@@ -173,7 +174,7 @@ def power_graph(flight_ids: list):
 
         # Define the date and id
         id = flight_ids[i]
-
+ 
         # Get the soc and time and plot it with a legend label
         motor_power = flight_data[id]['motor_power']
         time = flight_data[id]['time_min']
@@ -373,21 +374,103 @@ def custom_graph_creation(graph_type: str, flight_id, x_variable: str, y_variabl
             y_ax_data = (query_result[y_variable[0]].to_numpy() + query_result[y_variable[1]].to_numpy()) / 2
         else:
             y_ax_data = query_result[y_variable].to_numpy()
+        
+        if (x_variable == ['time_min']) :
+            # Load Pickle File Data
+            with open("Aniket_Stages\kmeans_model_with_metadata_0_waterloo.pkl", "rb") as f:
+                 model_dict = pickle.load(f)
 
-        # For each graph type graph different things.
-        if graph_type == "Line Plot":
-            plt.plot(x_ax_data, y_ax_data)
+            model = model_dict["model"]
+            scaler = model_dict["scaler"]
+            features = model_dict["metadata"]["features_used"]
+            phase_map = {0: "Phase 3", 1: "Phase 0", 2: "Phase 2", 3: "Phase 1"}
+            phase_colors = {
+               "Phase 0": "#9b59b6",      # Purple
+               "Phase 1": "#27ae60",     # Green
+               "Phase 2": "#f1c40f",    # Yellow
+               "Phase 3": "#e74c3c"    # Red
+            }
 
-        elif graph_type == "Scatter Plot":
-            plt.scatter(x_ax_data, y_ax_data, s=0.1, alpha = 0.6, c='blue')
-    
-    # Add labels and legend to plot
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
-    plt.title(f"{x_label} vs {y_label}")
+            # Get information for pickle data
+            flight_data_for_ml = flight_db_conn.get_flight_data_on_id(["pressure_alt", "requested_torque", "motor_power", "motor_rpm", "pitch", "roll", "oat", "ias", "ground_speed", "time_min"], flight_id)
+            
+            # Rename to fit pickle columns
+            flight_data_for_ml = flight_data_for_ml.rename(columns={
+               "requested_torque":      " requested torque",
+               "motor_power":           " motor power",
+               "motor_rpm":             " motor rpm",
+               "pitch":                 " PITCH",
+               "roll":                  " ROLL",
+               "oat":                   " OAT",
+               "ias":                   " IAS",
+               "ground_speed":          " GROUND_SPEED",
+               "time_min":              " time(min)",
+               "pressure_alt":          " PRESSURE_ALT"
+            })
 
-    # Return the axis
-    return custom_figure
+            # Add other columns that needed to be derived
+            flight_data_for_ml = add_altitude(flight_data_for_ml)
+            flight_data_for_ml = add_RoC(flight_data_for_ml)
+            flight_data_for_ml = add_smoothed_alt(flight_data_for_ml, 15)
+            flight_data_for_ml = add_smoothed_RoC(flight_data_for_ml, 15)
+
+            # Remove nan's
+            flight_data_for_ml = flight_data_for_ml.fillna(0)
+
+            # Apply model if possible
+            if all(col in flight_data_for_ml for col in features):
+                 X = flight_data_for_ml[features]
+                 X_scaled = scaler.transform(X)
+                 cluster_labels = model.predict(X_scaled)
+                 phase_names = [phase_map.get(label, label) for label in cluster_labels]
+                 print("Successful_cluster_labers")
+            else:
+                 cluster_labels = None
+                 print("failed_cluster_labels")
+                 missing = [col for col in features if col not in flight_data_for_ml]
+                 print("failed_cluster_labels. Missing columns:", missing)
+            
+            # Output graph
+            if graph_type == "Line Plot":
+               plt.plot(x_ax_data, y_ax_data)
+               if cluster_labels is not None :
+                    for i in range(2, len(x_ax_data)):
+                        x_pair = [x_ax_data[i-1].item(), x_ax_data[i].item()]
+                        y_pair = [y_ax_data[i-1].item(), y_ax_data[i].item()]
+                        label = cluster_labels[i]
+                        color = phase_colors.get(phase_map.get(label, f"Phase {label}"), "#cccccc")
+
+                        plt.fill_between(x_pair, y_pair, 0, color=color, alpha=0.3)
+
+                        from matplotlib.patches import Patch
+                        legend_patches = [Patch(color=color, label=label) for label, color in phase_colors.items()]
+                        plt.legend(handles=legend_patches, title="Flight Phase", loc="upper right")
+               else:
+                    plt.plot(x_ax_data, y_ax_data)
+
+            elif graph_type == "Scatter Plot":
+               if cluster_labels is not None :
+                    scatter = plt.scatter(x_ax_data, y_ax_data, s=0.1, alpha=0.6, c=cluster_labels, cmap='tab10')
+                    handles, _ = scatter.legend_elements(prop="colors")
+                    plt.legend(handles, list(phase_map.values()), title="Flight Phase")
+               else:
+                    plt.scatter(x_ax_data, y_ax_data, s=0.1, alpha=0.6, c='blue')
+        else : 
+            # For each graph type graph different things.
+            if graph_type == "Line Plot":
+                 plt.plot(x_ax_data, y_ax_data)
+
+            elif graph_type == "Scatter Plot":
+                 plt.scatter(x_ax_data, y_ax_data, s=0.1, alpha = 0.6, c='blue')
+        
+       
+        # Add labels and legend to plot
+        plt.xlabel(x_label)
+        plt.ylabel(y_label)
+        plt.title(f"{x_label} vs {y_label}")
+
+        # Return the axis
+        return custom_figure
 
 # Function -------------------------------------------------------------------------------------------------------------------------------------------------------
 def charging_graph_creation(graph_type: str, flight_ids, x_variable: str, y_variable: str, x_label: str, y_label: str):
