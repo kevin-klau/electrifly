@@ -9,7 +9,7 @@ import plotly.express as px
 import plotly.io as pio
 import matplotlib.pyplot as plt
 import pickle 
-from Aniket_Stages.feature_eng import add_features, add_altitude, add_smoothed_RoC, add_RoC, add_smoothed_alt, add_rolling_mean
+from feature_eng import add_features, add_altitude, add_smoothed_RoC, add_RoC, add_smoothed_alt, add_rolling_mean
 
 # Function -------------------------------------------------------------------------------------------------------------------------------------------------------
 def create_mapbox_map_per_flight(flight_id: int):
@@ -377,7 +377,7 @@ def custom_graph_creation(graph_type: str, flight_id, x_variable: str, y_variabl
         
         if (x_variable == ['time_min']) :
             # Load Pickle File Data
-            with open("Aniket_Stages\kmeans_model_with_metadata_0_waterloo.pkl", "rb") as f:
+            with open("kmeans_model_with_metadata_0_waterloo.pkl", "rb") as f:
                  model_dict = pickle.load(f)
 
             model = model_dict["model"]
