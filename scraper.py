@@ -352,6 +352,7 @@ if __name__ == '__main__':
   scrape(env['driver'], env['cursor'], env['download_dir'])
      
   # If there are more than 1 plane, then we will loop until all planes have been iterated through
+  
   pipistrel_go_home(env['driver'])
   numPlanes = get_number_of_planes(env['driver'])
   

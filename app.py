@@ -21,6 +21,8 @@ from model_querying import Model
 from pathlib import Path
 import asyncio
 from math import ceil, floor
+import math
+import io
 
 # List of custom aggregate variables
 custom_aggregate_variables_dict = {
@@ -90,6 +92,9 @@ charging_variables_columns = {
     "Temperature (°C)": ["temperature"],
 }
 charging_variables = list(charging_variables_columns.keys())
+selected_flights = reactive.Value(set()) 
+page_toggle_state = reactive.Value(False)
+all_toggle_state = reactive.Value(False)
 
 # Function -------------------------------------------------------------------------------------------------------------------------------------------------------
 # Getting the dates to be used in the ML UI:
@@ -172,6 +177,14 @@ def get_most_recent_run_time():
     new_date = flight_conn.get_last_scraper_runtime().strftime("%b %d, %Y at %I:%M %p")
     return new_date
 
+# Function -----------------------------------
+def load_data(self, flight_id):
+    """
+    Loads full flight data for a given flight_id using the query_flights class.
+    plane_type is accepted for compatibility, but not used in this version.
+    """
+    flights = query_flights()
+    return flights.get_flight_data_by_id(flight_id)
 
 # blue theme color
 blue = "#3459e6"
@@ -881,6 +894,53 @@ app_ui = ui.page_fluid(
         ),
         # ===============================================================================================================================================================
         # END: FLIGHT PLANNING SCREEN
+        # ===============================================================================================================================================================
+        # ===============================================================================================================================================================
+        # START: DOWNLOAD FLIGHTS SCREEN
+        # ===============================================================================================================================================================
+        ui.nav_panel("Download Flights",
+          div(HTML("<h2> Download Flights </h2>")),
+          div(HTML("<hr>")),
+          ui.card(
+               ui.card_header("Download your selected flight data", style="background-color: #3459e6; color: white; text-align: left;"),
+               ui.p("Select the flights you wish to download, and export them in CSV format for offline analysis or reporting. It might take a quick second to load the flights!"),
+               min_height="130px"
+          ),
+          div(HTML("<hr>")),
+          ui.card(
+               ui.tooltip(
+                    ui.input_selectize("flight_type_download", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
+                    "Select the aircraft type to load corresponding flights."
+               ), 
+               ui.layout_columns(
+                    ui.input_action_button("go_first_page", "⏮ First", style="width: 100%;"),
+                    ui.input_action_button("go_prev_page", "◀ Prev", style="width: 100%;"),
+                    ui.div(
+                         ui.div(
+                              ui.input_numeric("download_page", "Page", value=1, min=1),
+                              style="display: flex; justify-content: center;"
+                         ),
+                         ui.div(
+                              ui.output_ui("download_page_display"),
+                              style="text-align: center; margin-top: 4px;"
+                         )
+                    ),
+                    ui.input_action_button("go_next_page", "Next ▶", style="width: 100%;"),
+                    ui.input_action_button("go_last_page", "Last ⏭", style="width: 100%;"),
+                    fill_equal=True
+                    ),
+
+               ui.div(  # Group the buttons together
+                    ui.input_action_button("toggle_page_select", "Select All on Page"),
+                    ui.input_action_button("toggle_all_select", "Select All Flights")
+               ),
+               ui.output_ui("download_flight_selector_ui"),
+               ui.download_button("download_csv", "Download CSV")
+          ),
+          
+        ),
+        # ===============================================================================================================================================================
+        # START: DOWNLOAD FLIGHTS SCREEN
         # ===============================================================================================================================================================
         id="tab",  
     )  
@@ -1844,7 +1904,173 @@ def server(input: Inputs, output: Outputs, session: Session):
                selected=previous_selection
           )
 
+    @output
+    @render.download(filename="selected_flights.csv")
+    def download_csv():
+     all_selected = list(selected_flights())
+     if not all_selected:
+          return io.BytesIO(b"No flights selected.")
+     qf = query_flights()
+     return qf.get_combined_flights_csv(all_selected)
 
+    FLIGHTS_PER_PAGE = 10
+
+    @reactive.calc
+    def filtered_flights():
+     plane = input.flight_type_download()
+     if not plane:
+          return []
+     return list(get_flights(plane_type=plane).keys())
+
+    @reactive.calc
+    def max_download_page():
+     return max(1, math.ceil(len(filtered_flights()) / FLIGHTS_PER_PAGE))
+    
+    @reactive.Calc
+    def total_pages():
+     all_flights = list(get_flights(plane_type=input.flight_type_download()).keys())
+     return max(1, (len(all_flights) + FLIGHTS_PER_PAGE - 1) // FLIGHTS_PER_PAGE)
+    
+    @reactive.Effect
+    @reactive.event(input.go_prev_page)
+    def go_prev():
+     current = input.download_page()
+     if current > 1:
+          ui.update_numeric("download_page", value=current - 1)
+
+    @reactive.Effect
+    @reactive.event(input.go_next_page)
+    def go_next():
+     current = input.download_page()
+     if current < total_pages():
+          ui.update_numeric("download_page", value=current + 1)
+
+    @reactive.Effect
+    @reactive.event(input.go_first_page)
+    def go_first():
+     ui.update_numeric("download_page", value=1)
+
+    @reactive.Effect
+    @reactive.event(input.go_last_page)
+    def go_last():
+     ui.update_numeric("download_page", value=total_pages())
+
+    @reactive.calc
+    def paged_flight_choices():
+     page = input.download_page()
+     flights = filtered_flights()
+     start = (page - 1) * FLIGHTS_PER_PAGE
+     end = start + FLIGHTS_PER_PAGE
+     return flights[start:end]
+    
+
+    @output
+    @render.ui
+    def download_page_display():
+     return ui.tags.p(f"Page {input.download_page()} of {max_download_page()}")
+    
+    @reactive.Effect
+    @reactive.event(input.download_flight_selector)
+    def sync_checked_flights():
+     current_page_flights = set(paged_flight_choices())
+     current_selected = set(input.download_flight_selector() or [])
+
+     # Remove any unchecked items from current page
+     selected_flights.set(
+          (selected_flights() - current_page_flights) | current_selected
+
+     )
+    
+    @reactive.Effect
+    @reactive.event(input.flight_type_download, input.download_page)
+    def update_flight_checklist():
+     current_choices = paged_flight_choices()
+     currently_selected = list(selected_flights().intersection(current_choices))
+
+     ui.update_checkbox_group(
+          "download_flight_selector",
+          choices=current_choices,
+          selected=currently_selected
+     )
+
+    @reactive.Effect
+    @reactive.event(input.toggle_page_select)
+    def toggle_page_selection():
+     current = page_toggle_state()
+     current_choices = paged_flight_choices()
+     current_selected = selected_flights()
+
+     if current is False:
+          # Selecting
+          selected_flights.set(current_selected.union(current_choices))
+          page_toggle_state.set(True)
+     else:
+          # Deselecting
+          selected_flights.set(current_selected.difference(current_choices))
+          page_toggle_state.set(False)
+
+     # Update visible checkbox
+     ui.update_checkbox_group(
+          "download_flight_selector",
+          choices=current_choices,
+          selected=list(selected_flights().intersection(current_choices))
+     )
+
+    @reactive.Effect
+    @reactive.event(input.toggle_all_select)
+    def toggle_all_selection():
+     all_choices = list(get_flights(plane_type=input.flight_type_download()).keys())
+     current_selected = selected_flights()
+
+     if all_toggle_state() is False:
+          selected_flights.set(set(all_choices))
+          all_toggle_state.set(True)
+     else:
+          selected_flights.set(set())
+          all_toggle_state.set(False)
+
+     current_choices = paged_flight_choices()
+     ui.update_checkbox_group(
+          "download_flight_selector",
+          choices=current_choices,
+          selected=list(selected_flights().intersection(current_choices))
+     )
+
+    @reactive.Effect
+    @reactive.event(input.download_page)
+    def track_individual_checkboxes():
+     current = paged_flight_choices()
+     checked = set(selected_flights())
+
+     for fid in current:
+          box_id = f"checkbox_{fid}"
+          if input[box_id]():
+               checked.add(fid)
+          else:
+               checked.discard(fid)
+
+     selected_flights.set(checked)
+
+    @output
+    @render.ui
+    def download_flight_selector_ui():
+     current_choices = paged_flight_choices()
+     selected_ids = selected_flights()
+     flights_dict = get_flights(plane_type=input.flight_type_download())
+
+     return ui.div(
+          *[
+               ui.card(
+                    ui.input_checkbox(
+                         id=f"checkbox_{fid}",
+                         label=flights_dict[fid],
+                         value=(fid in selected_ids),
+                    ),
+                    style="margin-bottom: 8px;"
+               )
+               for fid in current_choices
+          ]
+     )
     # #-------------------------------------------------------------------------------------------------------------------------------------------------------------
     # # END: SIMULATION SCREEN 
     # #-------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from storage import execute, select
+import io
 
 class query_flights:
 
@@ -696,3 +697,29 @@ class query_flights:
 
         # Return the data
         return temp, visibility, wind_speed
+
+    
+    def get_combined_flights_csv(self, flight_ids: list):
+     """
+     Combines data from multiple flightdata_{id} tables.
+     Returns the result as a CSV (BytesIO).
+     """
+     engine = self.__connect()
+     combined_df = pd.DataFrame()
+
+     for fid in flight_ids:
+          table_name = f"flightdata_{str(fid).replace('-', '_')}"
+          query = f"SELECT * FROM {table_name}"
+
+          try:
+               df = pd.read_sql_query(query, engine)
+               combined_df = pd.concat([combined_df, df], ignore_index=True)
+          except Exception as e:
+               print(f"❌ Error loading {table_name}: {e}")
+
+     engine.dispose()
+
+     # Convert to CSV
+     buffer = io.StringIO()
+     combined_df.to_csv(buffer, index=False)
+     return io.BytesIO(buffer.getvalue().encode("utf-8"))
