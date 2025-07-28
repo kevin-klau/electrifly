@@ -934,8 +934,9 @@ app_ui = ui.page_fluid(
                     ui.input_action_button("toggle_page_select", "Select All on Page"),
                     ui.input_action_button("toggle_all_select", "Select All Flights")
                ),
+               
+               ui.download_button("download_csv", "Download CSV",style="background-color: #405cdc; color: white; border: none;"),
                ui.output_ui("download_flight_selector_ui"),
-               ui.download_button("download_csv", "Download CSV")
           ),
           
         ),
@@ -1908,6 +1909,8 @@ def server(input: Inputs, output: Outputs, session: Session):
     @render.download(filename="selected_flights.csv")
     def download_csv():
      all_selected = list(selected_flights())
+     print(all_selected)
+     print(selected_flights())
      if not all_selected:
           return io.BytesIO(b"No flights selected.")
      qf = query_flights()
@@ -1970,30 +1973,6 @@ def server(input: Inputs, output: Outputs, session: Session):
      return ui.tags.p(f"Page {input.download_page()} of {max_download_page()}")
     
     @reactive.Effect
-    @reactive.event(input.download_flight_selector)
-    def sync_checked_flights():
-     current_page_flights = set(paged_flight_choices())
-     current_selected = set(input.download_flight_selector() or [])
-
-     # Remove any unchecked items from current page
-     selected_flights.set(
-          (selected_flights() - current_page_flights) | current_selected
-
-     )
-    
-    @reactive.Effect
-    @reactive.event(input.flight_type_download, input.download_page)
-    def update_flight_checklist():
-     current_choices = paged_flight_choices()
-     currently_selected = list(selected_flights().intersection(current_choices))
-
-     ui.update_checkbox_group(
-          "download_flight_selector",
-          choices=current_choices,
-          selected=currently_selected
-     )
-
-    @reactive.Effect
     @reactive.event(input.toggle_page_select)
     def toggle_page_selection():
      current = page_toggle_state()
@@ -2001,55 +1980,56 @@ def server(input: Inputs, output: Outputs, session: Session):
      current_selected = selected_flights()
 
      if current is False:
-          # Selecting
+          # Select current page
           selected_flights.set(current_selected.union(current_choices))
           page_toggle_state.set(True)
      else:
-          # Deselecting
+          # Deselect current page
           selected_flights.set(current_selected.difference(current_choices))
           page_toggle_state.set(False)
 
-     # Update visible checkbox
-     ui.update_checkbox_group(
-          "download_flight_selector",
-          choices=current_choices,
-          selected=list(selected_flights().intersection(current_choices))
-     )
+     # Update individual checkboxes
+     for fid in current_choices:
+          ui.update_checkbox(f"checkbox_{fid}", value=(fid in selected_flights()))
 
-    @reactive.Effect
-    @reactive.event(input.toggle_all_select)
-    def toggle_all_selection():
-     all_choices = list(get_flights(plane_type=input.flight_type_download()).keys())
-     current_selected = selected_flights()
+     @reactive.Effect
+     @reactive.event(input.toggle_all_select)
+     def toggle_all_selection():
+          all_choices = list(get_flights(plane_type=input.flight_type_download()).keys())
+          current_selected = selected_flights()
 
-     if all_toggle_state() is False:
-          selected_flights.set(set(all_choices))
-          all_toggle_state.set(True)
-     else:
-          selected_flights.set(set())
-          all_toggle_state.set(False)
-
-     current_choices = paged_flight_choices()
-     ui.update_checkbox_group(
-          "download_flight_selector",
-          choices=current_choices,
-          selected=list(selected_flights().intersection(current_choices))
-     )
-
-    @reactive.Effect
-    @reactive.event(input.download_page)
-    def track_individual_checkboxes():
-     current = paged_flight_choices()
-     checked = set(selected_flights())
-
-     for fid in current:
-          box_id = f"checkbox_{fid}"
-          if input[box_id]():
-               checked.add(fid)
+          if all_toggle_state() is False:
+               selected_flights.set(set(all_choices))
+               all_toggle_state.set(True)
           else:
-               checked.discard(fid)
+               selected_flights.set(set())
+               all_toggle_state.set(False)
 
-     selected_flights.set(checked)
+          # Update checkboxes for current page only
+          current_choices = paged_flight_choices()
+          for fid in current_choices:
+               ui.update_checkbox(f"checkbox_{fid}", value=(fid in selected_flights()))
+
+    @reactive.Effect
+    def update_selection_on_checkbox_change():
+     current_fids = paged_flight_choices()
+     current_selected = set(selected_flights())
+
+     updated = False
+
+     for fid in current_fids:
+          checkbox_id = f"checkbox_{fid}"
+          if checkbox_id in input:
+               val = input[checkbox_id]()
+               if val and fid not in current_selected:
+                    current_selected.add(fid)
+                    updated = True
+               elif not val and fid in current_selected:
+                    current_selected.remove(fid)
+                    updated = True
+
+     if updated:
+          selected_flights.set(current_selected)
 
     @output
     @render.ui
