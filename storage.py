@@ -106,7 +106,7 @@ def select(query, params=None):
   return result
 
 # takes in flight metadata and pushes it to the flights table
-def push_flight_metadata(id, datetime, notes, flight_type, plane):
+def push_flight_metadata(id, datetime, notes, flight_type, plane = "C-GAUW"):
   # separate date and time
   date = datetime.date()
   time = datetime.time()
@@ -219,8 +219,8 @@ def push_flight_data(df, flight_id, flight_type):
   # add new table to db
   downsampled_df.to_sql(table_name, engine, if_exists="fail", index=False, dtype=explicit_columns)
   engine.dispose()
-  if flight_type == "Flight test":
-    predict_activity(flight_id)  
+  #if flight_type == "Flight test":
+   # predict_activity(flight_id)  
 
 # query weather df for all records in between the given times
 def query_weather_df(df, date, start_time, end_time):

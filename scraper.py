@@ -114,43 +114,44 @@ def weather_data(date_list, ids_list, driver, download_dir):
   shutil.rmtree(download_dir,ignore_errors=True)
 
 def environment_setup():
-  # Load .env file
-  load_dotenv()
+    load_dotenv()
 
-  # delete the temp directory if it exists
-  temp_dir = os.path.join(os.getcwd(),'temp')
-  if os.path.exists(temp_dir) and os.path.isdir(temp_dir):
-    shutil.rmtree(temp_dir, ignore_errors=True)
-  # set download directory to working directory
-  download_dir = os.path.join(os.getcwd(),'temp')
+    base_temp = os.path.join(os.getcwd(), "temp")
+    app_temp  = base_temp                           # your app’s temp (with Singleton* files)
+    dl_dir    = os.path.join(base_temp, "downloads")
+    prof_dir  = os.path.join(base_temp, f"chrome-profile-{int(time.time())}")  # unique each run
 
-  chrome_options = webdriver.ChromeOptions()
+    # keep app temp (Singleton* lives here), but reset Chrome-specific dirs
+    os.makedirs(app_temp, exist_ok=True)
+    if os.path.exists(dl_dir):
+        shutil.rmtree(dl_dir, ignore_errors=True)
+    os.makedirs(dl_dir, exist_ok=True)
+    os.makedirs(prof_dir, exist_ok=True)
 
-  # download preferences
-  prefs = {
-      "download.default_directory": download_dir,
-      "safebrowsing.enabled": "false"
-  }
+    chrome_options = webdriver.ChromeOptions()
+    prefs = {
+        "download.default_directory": dl_dir,
+        "download.prompt_for_download": False,
+        "safebrowsing.enabled": "false",
+        "directory_upgrade": True,
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
 
-  data_directory_arg = "user-data-dir=" + download_dir
+    # IMPORTANT: point Chrome to its OWN profile dir, not app_temp
+    chrome_options.add_argument(f"--user-data-dir={prof_dir}")
+    # (optional but helpful in servers)
+    #chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
 
-  chrome_options.add_experimental_option("prefs", prefs)
-  chrome_options.add_argument(data_directory_arg)
-  # set up Chrome webdriver
-  if "Windows" == platform.system():
-    driver = webdriver.Chrome(service=ChromeService(chromedriver_path), options=chrome_options)
-  else:
-    driver = webdriver.Chrome(options=chrome_options)
-  
-  # get the connection string from the environment variable
-  connection_string = os.getenv('DATABASE_URL')
+    if platform.system() == "Windows":
+        driver = webdriver.Chrome(service=ChromeService(chromedriver_path), options=chrome_options)
+    else:
+        driver = webdriver.Chrome(options=chrome_options)
 
-  # connect to the PostgreSQL database
-  conn = psycopg2.connect(connection_string)
-
-  # create a cursor object for the db
-  cur = conn.cursor()
-  return {'driver': driver, 'cursor': cur, 'download_dir': download_dir}
+    conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+    cur = conn.cursor()
+    return {"driver": driver, "cursor": cur, "download_dir": dl_dir, "profile_dir": prof_dir, "app_temp": app_temp}
 
 def pipistrel_go_home(driver):
    # Assumes are currently logged in, goes back to home page
@@ -258,9 +259,9 @@ def scrape(driver, cur, download_dir):
       current_flight_datetime = convert_str_to_datetime(current_flight_str_datetime)
       
       # Used to limit the dates, in acutal code, remove this
-      #flight_date = current_flight_datetime.date()
-      #if flight_date < date(2025,6,1) or flight_date > date(2025,6,13):
-      #  continue
+      flight_date = current_flight_datetime.date()
+      if (flight_date >= date(2025,6, 20) and flight_date <= date(2025,6,25)) or flight_date < date(2025, 6, 8):
+        continue
       
       current_flight_type = row_data[2]
       current_flight_notes = row_data[4]

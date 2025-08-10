@@ -414,7 +414,7 @@ app_ui = ui.page_fluid(
                     ui.layout_columns(
                          ui.input_selectize("data_granularity", "Select Data Granularity", choices=["Granular", "Aggregate"], selected="Granular"),
                          ui.input_selectize("data_type_selection", "Select Data Type", choices=["Flight test", "Charging", "Ground test"], multiple=False, selected="Flight test"),
-                         ui.input_selectize("plane_type_filter", "Select Plane Type", choices=["C-GAUW", "C-GMUW"]),
+                         ui.input_selectize("plane_type_filter", "Select Plane", choices=["C-GAUW", "C-GMUW"]),
                          ui.output_ui("data_type_dates"),
                          ui.input_selectize("total_data_show", "Select Data Preview Limit", choices=[10, 20, 30], multiple=False, selected=10),
                          col_widths=[2, 2, 2, 3, 3]
@@ -463,7 +463,7 @@ app_ui = ui.page_fluid(
                 div(HTML("<hr>")),
                 div(HTML("<h4> Flight Graphs </h4>")),
                 ui.layout_columns(
-                     ui.input_selectize("flight_type_vis", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
+                     ui.input_selectize("flight_type_vis", "Choose Plane:", ["C-GAUW", "C-GMUW"]),
                      col_widths=(3)
                 ),
                 ui.layout_columns(
@@ -561,8 +561,8 @@ app_ui = ui.page_fluid(
                 ui.layout_columns(
                     ui.card(
                          ui.tooltip(
-                              ui.input_selectize("flight_type_custom", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
-                              "Select the flight type."
+                              ui.input_selectize("flight_type_custom", "Choose Plane:", ["C-GAUW", "C-GMUW"]),
+                              "Select the flight."
                          ),
                          ui.tooltip(
                               ui.input_selectize("select_flights", "Flight Date:", {}),
@@ -611,7 +611,7 @@ app_ui = ui.page_fluid(
                     ui.p("Discover valuable insights into the heart of the e-plane — the battery. Explore how different aircraft maneuvers affect the battery’s state of charge through detailed statistical visualizations. Additionally, monitor the battery's health over time, enabling you to derive actionable insights and enhance your decision-making processes."), min_height="130px"
                 ), 
                 div(HTML("<hr>")),
-                ui.input_selectize("flight_type_stat", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
+                ui.input_selectize("flight_type_stat", "Choose Plane:", ["C-GAUW", "C-GMUW"]),
                 ui.input_selectize("statistical_time", "Choose Flight Date:", {}),
                 ui.p("          "),
                 ui.row(
@@ -650,7 +650,7 @@ app_ui = ui.page_fluid(
                 div(HTML("<hr>")),
                 div(HTML("<h2> SOH Insights </h2>")),
                 div(HTML("<hr>")),
-                ui.input_selectize("flight_type_statistical_multi", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
+                ui.input_selectize("flight_type_statistical_multi", "Choose Plane:", ["C-GAUW", "C-GMUW"]),
                 ui.input_selectize("statistical_multi_time", "Choose Flight Date(s):", {}, multiple=True, width="600px"),
                 ui.p("          "),
                 ui.row(
@@ -701,7 +701,7 @@ app_ui = ui.page_fluid(
                 ui.layout_columns(
                     ui.card(
                          ui.tooltip(
-                              ui.input_selectize("plane_type_charging", "Choose Flight Type:", ["C-GAUW", "C-GMUW"]),
+                              ui.input_selectize("plane_type_charging", "Choose Flight:", ["C-GAUW", "C-GMUW"]),
                               "Select the plane type to filter available charging sessions."
                          ),
                          ui.tooltip(
@@ -902,41 +902,74 @@ app_ui = ui.page_fluid(
           div(HTML("<h2> Download Flights </h2>")),
           div(HTML("<hr>")),
           ui.card(
-               ui.card_header("Download your selected flight data", style="background-color: #3459e6; color: white; text-align: left;"),
-               ui.p("Select the flights you wish to download, and export them in CSV format for offline analysis or reporting. It might take a quick second to load the flights!"),
+               ui.card_header("Welcome to ElectriFly's Download Flights Interface!", style="background-color: #3459e6; color: white; text-align: left;"),
+               ui.p("Pick your lane, select the flights you wish to download, and export them in CSV format for offline analysis or reporting! It might take a quick second to load the flights!"),
                min_height="130px"
           ),
           div(HTML("<hr>")),
           ui.card(
                ui.tooltip(
-                    ui.input_selectize("flight_type_download", "Choose Plane Type:", ["C-GAUW", "C-GMUW"]),
-                    "Select the aircraft type to load corresponding flights."
+                    ui.input_selectize("flight_type_download", "Choose Plane:", ["C-GAUW", "C-GMUW"]),
+                    "Select the aircraft to load corresponding flights."
                ), 
-               ui.layout_columns(
-                    ui.input_action_button("go_first_page", "⏮ First", style="width: 100%;"),
-                    ui.input_action_button("go_prev_page", "◀ Prev", style="width: 100%;"),
+               
+               ui.div(
+                    # First two buttons (left group)
                     ui.div(
+                         ui.input_action_button("toggle_page_select", "Select/Deselect All On Page"),
+                         ui.input_action_button("toggle_all_select", "Select/Deselect All Flights"),
+                         style="display:flex; gap:8px;"
+                    ),
+                    # Last button (right, bigger + wider)
+                    ui.download_button(
+                         "download_csv",
+                         "Download CSV",
+                         style=(
+                              "background-color:#405cdc; color:white; border:none; "
+                              "padding:12px 20px; font-size:16px; min-width:600px;"
+                         )
+                    ),
+                    style="display:flex; justify-content:space-between; align-items:center; width:100%;"
+               ),
+               
+               ui.layout_columns(
+                    ui.div(
+                         ui.input_action_button("go_first_page", "⏮ First", style="width: 100%;"),
+                         style="display:flex; align-items:center; justify-content:center; height:100%;"
+                    ),
+                    ui.div(
+                         ui.input_action_button("go_prev_page", "◀ Prev", style="width: 100%;"),
+                         style="display:flex; align-items:center; justify-content:center; height:100%;"
+                    ),
+                    ui.div(
+                         # stack the two bits vertically; avoid extra flex on the inner numeric
                          ui.div(
                               ui.input_numeric("download_page", "Page", value=1, min=1),
-                              style="display: flex; justify-content: center;"
+                              style="width:100%; text-align:center; justify-content:center"
                          ),
                          ui.div(
                               ui.output_ui("download_page_display"),
-                              style="text-align: center; margin-top: 4px;"
+                              style="text-align:center;"
+                         ),
+                         style=(
+                              "display:flex; flex-direction:column; "
+                              "justify-content:center; align-items:center; "
+                              "height:100%; gap:4px; width:100%;"
                          )
                     ),
-                    ui.input_action_button("go_next_page", "Next ▶", style="width: 100%;"),
-                    ui.input_action_button("go_last_page", "Last ⏭", style="width: 100%;"),
+                    ui.div(
+                         ui.input_action_button("go_next_page", "Next ▶", style="width: 100%;"),
+                         style="display:flex; align-items:center; justify-content:center; height:100%;"
+                    ),
+                    ui.div(
+                         ui.input_action_button("go_last_page", "Last ⏭", style="width: 100%;"),
+                         style="display:flex; align-items:center; justify-content:center; height:100%;"
+                    ),
                     fill_equal=True
                     ),
-
-               ui.div(  # Group the buttons together
-                    ui.input_action_button("toggle_page_select", "Select All on Page"),
-                    ui.input_action_button("toggle_all_select", "Select All Flights")
-               ),
+                    ui.output_ui("download_flight_selector_ui"),
                
-               ui.download_button("download_csv", "Download CSV",style="background-color: #405cdc; color: white; border: none;"),
-               ui.output_ui("download_flight_selector_ui"),
+               
           ),
           
         ),
